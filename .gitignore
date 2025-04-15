@@ -2,3 +2,5 @@ credentials/
 __pycache__/
 cookies.txt
 .env
+users.db
+success.html

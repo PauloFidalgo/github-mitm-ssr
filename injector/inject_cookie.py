@@ -5,11 +5,9 @@ from selenium.webdriver.support import expected_conditions as EC
 
 
 def inject_and_verify_github_cookies(cookies):
-    # Configure Firefox options
     options = Options()
-    options.accept_insecure_certs = True  # Handle SSL issues
+    options.accept_insecure_certs = True  
 
-    # Initialize driver with options only
     driver = webdriver.Firefox(options=options)
 
     try:
@@ -18,7 +16,6 @@ def inject_and_verify_github_cookies(cookies):
             EC.presence_of_element_located(("tag name", "body"))
         )
 
-        # Add cookies
         for name, value in cookies.items():
             driver.add_cookie(
                 {
@@ -30,7 +27,6 @@ def inject_and_verify_github_cookies(cookies):
                 }
             )
 
-        # Refresh and verify
         driver.refresh()
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located(("xpath", "//meta[@name='user-login']"))
@@ -38,7 +34,7 @@ def inject_and_verify_github_cookies(cookies):
 
         user_element = driver.find_element("xpath", "//meta[@name='user-login']")
         print(f"Logged in as: {user_element.get_attribute('content')}")
-        input("Press Enter to close browser...")  # Pause for verification
+        input("Press Enter to close browser...") 
 
     finally:
         driver.quit()

@@ -145,8 +145,12 @@ def execute_2fa(app_otp: int):
     print("Session cookies:", req_session.cookies.get_dict())
 
     soup = BeautifulSoup(html, "html.parser")
+    page_title = soup.title.string.strip()  # Extract and clean the title
 
-    if soup.find("input", {"name": "include_email"}):
+    # Compare the title to determine success or failure
+    if page_title == "GitHub":
         return html, "success", req_session.cookies.get_dict()
-    else:
+    elif page_title == "Two-factor authentication · GitHub":
         return html, "failure", req_session.cookies.get_dict()
+    else:
+        return html, "unknown", req_session.cookies.get_dict()
