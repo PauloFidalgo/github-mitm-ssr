@@ -3,7 +3,6 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-
 def inject_and_verify_github_cookies(cookies):
     options = Options()
     options.accept_insecure_certs = True  
@@ -33,8 +32,5 @@ def inject_and_verify_github_cookies(cookies):
         )
 
         user_element = driver.find_element("xpath", "//meta[@name='user-login']")
-        print(f"Logged in as: {user_element.get_attribute('content')}")
-        input("Press Enter to close browser...") 
-
     finally:
         driver.quit()

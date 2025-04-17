@@ -5,10 +5,9 @@ from flask import session as flask_session  # Flask session
 
 # Rename the requests session to avoid conflict with flask_session
 req_session = requests.Session()
-req_session.headers.update({
-    "User-Agent": "Mozilla/5.0",
-    "Accept-Language": "en-US,en;q=0.5"
-})
+req_session.headers.update(
+    {"User-Agent": "Mozilla/5.0", "Accept-Language": "en-US,en;q=0.5"}
+)
 
 
 def save_cookies_to_file():
@@ -50,11 +49,12 @@ def get_login_page():
 
 
 def perform_login(username, password):
-    # Retrieve the previously stored authenticity token from Flask's session
+    # Retrieve authenticity token
     token = flask_session.get("authenticity_token")
     if not token:
-        return "Missing authenticity token.", "error"
+        return "Missing authenticity token.", "error", {}
 
+    # Generate a device ID
     flask_session["device_id"] = str(uuid.uuid4())
 
     payload = {
@@ -68,20 +68,45 @@ def perform_login(username, password):
         "device_id": flask_session.get("device_id"),
     }
 
-    post_resp = req_session.post("https://github.com/session", data=payload)
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Referer": "https://github.com/login",
+        "Origin": "https://github.com",
+    }
+
+    post_resp = req_session.post(
+        "https://github.com/session",
+        data=payload,
+        headers=headers,
+        allow_redirects=True,
+    )
     html = post_resp.text
 
     save_cookies_to_file()
 
     cookies = req_session.cookies.get_dict()
-    already_logged_in = cookies.get("logged_in", "no") == "yes"
 
-    if already_logged_in:
-        return html, "success", cookies
-    elif "/sessions/two-factor" in post_resp.url or "two-factor" in html:
-        return html, "2fa", cookies
-    else:
+    # Check for GitHub login failure indicators
+    if "Incorrect username or password" in html:
+
         return html, "invalid", cookies
+
+    if "There have been several failed login attempts" in html:
+
+        return html, "rate_limited", cookies
+
+    # Check if logged_in cookie is 'yes'
+    if cookies.get("logged_in") == "yes":
+
+        return html, "success", cookies
+
+    # Check if we're being redirected to the 2FA page
+    if "/sessions/two-factor" in post_resp.url or "two-factor" in html:
+
+        return html, "2fa", cookies
+
+    return html, "unknown", cookies
 
 
 def perform_2fa():
@@ -90,29 +115,19 @@ def perform_2fa():
     It requests the 2FA app page after login to fetch the form or QR code page.
     """
     headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0",
-        "Accept": "text/html,application/xhtml+xml,application/json",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "pt-PT,pt;q=0.8,en;q=0.5,en-US;q=0.3",
-        "Referer": "https://github.com/sessions/two-factor/webauthn",
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://github.com/sessions/two-factor",
         "Origin": "https://github.com",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-        "Turbo-Visit": "true",
-        "X-React-App-Name": "rails"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "en-US,en;q=0.5",
     }
 
-    # Ensure req_session has been authenticated successfully before this call
-    print("Session cookies:", req_session.cookies.get_dict())
+    response = req_session.get(
+        "https://github.com/sessions/two-factor/app", headers=headers
+    )
 
-    response = req_session.get("https://github.com/sessions/two-factor/app", headers=headers)
     save_cookies_to_file()
-
-    # Check if we got a proper HTML response or if it's a redirect or error page
-    if response.status_code != 200:
-        print("Error: Received status code", response.status_code)
-        return f"Error: {response.status_code}"
 
     # Parse the response to update the authenticity_token if needed
     soup = BeautifulSoup(response.text, "html.parser")
@@ -121,6 +136,7 @@ def perform_2fa():
         flask_session["authenticity_token"] = token_input["value"]
 
     return response.text
+
 
 def forward_sms():
     headers = {
@@ -137,9 +153,6 @@ def forward_sms():
         "X-React-App-Name": "rails",
     }
 
-    # Ensure req_session has been authenticated successfully before this call
-    print("Session cookies:", req_session.cookies.get_dict())
-
     response = req_session.get(
         "https://github.com/sessions/two-factor/sms/confirm", headers=headers
     )
@@ -147,7 +160,6 @@ def forward_sms():
 
     # Check if we got a proper HTML response or if it's a redirect or error page
     if response.status_code != 200:
-        print("Error: Received status code", response.status_code)
         return f"Error: {response.status_code}"
 
     # Parse the response to update the authenticity_token if needed
@@ -159,10 +171,40 @@ def forward_sms():
     return response.text
 
 
-def execute_2fa_otp(app_otp: int, field_name:str):
-    token = flask_session.get("authenticity_token")
-    if not token:
-        return "Missing authenticity token.", "error"
+def execute_2fa_otp(app_otp: int, field_name: str = None):
+    # Step 1: Force correct 2FA page (Google Authenticator)
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://github.com/sessions/two-factor",
+        "Origin": "https://github.com",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
+
+    resp = req_session.get(
+        "https://github.com/sessions/two-factor/app", headers=headers
+    )
+    if resp.status_code != 200:
+        return resp.text, "error", {}
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    token_input = soup.find("input", {"name": "authenticity_token"})
+    if not token_input or not token_input.has_attr("value"):
+        return resp.text, "error", {}
+
+    token = token_input["value"]
+    flask_session["authenticity_token"] = token
+
+    # Auto-detect the OTP field if not given
+    if not field_name:
+        otp_input = soup.find(
+            "input", {"type": "text", "autocomplete": "one-time-code"}
+        )
+        field_name = (
+            otp_input["name"] if otp_input and otp_input.has_attr("name") else "otp"
+        )
 
     payload = {
         "authenticity_token": token,
@@ -174,31 +216,29 @@ def execute_2fa_otp(app_otp: int, field_name:str):
         "device_id": flask_session.get("device_id"),
     }
 
-    post_resp = req_session.post("https://github.com/sessions/two-factor", data=payload)
-    html = post_resp.text
+    headers["Content-Type"] = "application/x-www-form-urlencoded"
 
-    save_cookies_to_file()
-    print("Session cookies:", req_session.cookies.get_dict())
+    post_resp = req_session.post(
+        "https://github.com/sessions/two-factor", data=payload, headers=headers
+    )
 
-    soup = BeautifulSoup(html, "html.parser")
-    page_title = soup.title.string.strip()  # Extract and clean the title
+    soup = BeautifulSoup(post_resp.text, "html.parser")
+    title = soup.title.string.strip() if soup.title else "Unknown"
 
-    # Compare the title to determine success or failure
-    if page_title == "GitHub":
-        return html, "success", req_session.cookies.get_dict()
-    elif page_title == "Two-factor authentication · GitHub":
-        return html, "failure", req_session.cookies.get_dict()
+    if "GitHub" in title and "two-factor" not in post_resp.url:
+        return post_resp.text, "success", req_session.cookies.get_dict()
+    elif "Two-factor authentication · GitHub" in title:
+        return post_resp.text, "failure", req_session.cookies.get_dict()
     else:
-        return html, "unknown", req_session.cookies.get_dict()
+        return post_resp.text, "unknown", req_session.cookies.get_dict()
 
 
 def send_sms(authenticity_token, resend):
-    # Forward the request to GitHub
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0",
         "Accept": "text/html,application/xhtml+xml,application/json",
         "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "pt-PT,pt;q=0.8,en;q=0.5,en-US;q=0.3",
+        "Accept-Language": "en-US,en;q=0.5",
         "Referer": "https://github.com/sessions/two-factor/sms/confirm",
         "Origin": "https://github.com",
         "Sec-Fetch-Dest": "empty",
@@ -216,7 +256,14 @@ def send_sms(authenticity_token, resend):
         headers=headers,
         data=payload,
     )
-
-    # Save cookies after forwarding the request
     save_cookies_to_file()
+
+    if response.status_code != 200:
+        return f"Error: {response.status_code}"
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    token_input = soup.find("input", {"name": "authenticity_token"})
+    if token_input and token_input.has_attr("value"):
+        flask_session["authenticity_token"] = token_input["value"]
+
     return response.text
