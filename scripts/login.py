@@ -5,10 +5,9 @@ from flask import session as flask_session  # Flask session
 
 # Rename the requests session to avoid conflict with flask_session
 req_session = requests.Session()
-req_session.headers.update({
-    "User-Agent": "Mozilla/5.0",
-    "Accept-Language": "en-US,en;q=0.5"
-})
+req_session.headers.update(
+    {"User-Agent": "Mozilla/5.0", "Accept-Language": "en-US,en;q=0.5"}
+)
 
 
 def save_cookies_to_file():
@@ -76,15 +75,17 @@ def perform_login(username, password):
         "Origin": "https://github.com",
     }
 
-
-    post_resp = req_session.post("https://github.com/session", data=payload, headers=headers, allow_redirects=True)
+    post_resp = req_session.post(
+        "https://github.com/session",
+        data=payload,
+        headers=headers,
+        allow_redirects=True,
+    )
     html = post_resp.text
-
 
     save_cookies_to_file()
 
     cookies = req_session.cookies.get_dict()
-
 
     # Check for GitHub login failure indicators
     if "Incorrect username or password" in html:
@@ -105,9 +106,7 @@ def perform_login(username, password):
 
         return html, "2fa", cookies
 
-
     return html, "unknown", cookies
-
 
 
 def perform_2fa():
@@ -124,9 +123,9 @@ def perform_2fa():
         "Accept-Language": "en-US,en;q=0.5",
     }
 
-
-    response = req_session.get("https://github.com/sessions/two-factor/app", headers=headers)
-
+    response = req_session.get(
+        "https://github.com/sessions/two-factor/app", headers=headers
+    )
 
     save_cookies_to_file()
 
@@ -137,6 +136,7 @@ def perform_2fa():
         flask_session["authenticity_token"] = token_input["value"]
 
     return response.text
+
 
 def forward_sms():
     headers = {
@@ -152,7 +152,6 @@ def forward_sms():
         "Turbo-Visit": "true",
         "X-React-App-Name": "rails",
     }
-
 
     response = req_session.get(
         "https://github.com/sessions/two-factor/sms/confirm", headers=headers
@@ -183,7 +182,9 @@ def execute_2fa_otp(app_otp: int, field_name: str = None):
         "Accept-Language": "en-US,en;q=0.5",
     }
 
-    resp = req_session.get("https://github.com/sessions/two-factor/app", headers=headers)
+    resp = req_session.get(
+        "https://github.com/sessions/two-factor/app", headers=headers
+    )
     if resp.status_code != 200:
         return resp.text, "error", {}
 
@@ -198,8 +199,12 @@ def execute_2fa_otp(app_otp: int, field_name: str = None):
 
     # Auto-detect the OTP field if not given
     if not field_name:
-        otp_input = soup.find("input", {"type": "text", "autocomplete": "one-time-code"})
-        field_name = otp_input["name"] if otp_input and otp_input.has_attr("name") else "otp"
+        otp_input = soup.find(
+            "input", {"type": "text", "autocomplete": "one-time-code"}
+        )
+        field_name = (
+            otp_input["name"] if otp_input and otp_input.has_attr("name") else "otp"
+        )
 
     payload = {
         "authenticity_token": token,
@@ -213,7 +218,9 @@ def execute_2fa_otp(app_otp: int, field_name: str = None):
 
     headers["Content-Type"] = "application/x-www-form-urlencoded"
 
-    post_resp = req_session.post("https://github.com/sessions/two-factor", data=payload, headers=headers)
+    post_resp = req_session.post(
+        "https://github.com/sessions/two-factor", data=payload, headers=headers
+    )
 
     soup = BeautifulSoup(post_resp.text, "html.parser")
     title = soup.title.string.strip() if soup.title else "Unknown"
@@ -224,7 +231,6 @@ def execute_2fa_otp(app_otp: int, field_name: str = None):
         return post_resp.text, "failure", req_session.cookies.get_dict()
     else:
         return post_resp.text, "unknown", req_session.cookies.get_dict()
-
 
 
 def send_sms(authenticity_token, resend):
@@ -245,12 +251,12 @@ def send_sms(authenticity_token, resend):
         "resend": resend,
     }
 
-
     response = req_session.post(
-        "https://github.com/sessions/two-factor/sms/confirm", headers=headers, data=payload
+        "https://github.com/sessions/two-factor/sms/confirm",
+        headers=headers,
+        data=payload,
     )
     save_cookies_to_file()
-
 
     if response.status_code != 200:
         return f"Error: {response.status_code}"
