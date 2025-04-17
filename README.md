@@ -11,6 +11,7 @@ This is a project designed for educational purposes to demonstrate and understan
 
 ## Prerequisites
 - Python
+- Sqlite3
 - Required Python libraries (see [Installation](#installation))
 
 ## Installation
@@ -22,6 +23,10 @@ This is a project designed for educational purposes to demonstrate and understan
 2. Install dependencies:
     ```bash
     pip3 install -r requirements.txt
+    ```
+3. Create Local Database:
+    ```bash
+    python3 db/database_setup.py
     ```
 
 ## Usage
