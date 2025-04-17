@@ -16,8 +16,8 @@ This is a project designed for educational purposes to demonstrate and understan
 ## Installation
 1. Clone the repository:
     ```bash
-    git clone https://github.com/yourusername/myMitm.git
-    cd myMitm
+    git clone https://github.com/PauloFidalgo/github-mitm-ssr.git
+    cd github-mitm-ssr
     ```
 2. Install dependencies:
     ```bash
