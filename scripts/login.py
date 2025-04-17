@@ -68,12 +68,25 @@ def perform_login(username, password):
         "device_id": flask_session.get("device_id"),
     }
 
-    post_resp = req_session.post("https://github.com/session", data=payload)
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Referer": "https://github.com/login",
+        "Origin": "https://github.com",
+    }
+
+    print(f"Submitting Login Request with Payload: {payload}")
+    print(f"Headers Sent: {headers}")
+    print(f"Session Cookies Before Login: {req_session.cookies.get_dict()}")
+
+    post_resp = req_session.post("https://github.com/session", data=payload, headers=headers)
     html = post_resp.text
 
     save_cookies_to_file()
 
     cookies = req_session.cookies.get_dict()
+    print(f"Session Cookies After Login: {cookies}")
+
     already_logged_in = cookies.get("logged_in", "no") == "yes"
 
     if already_logged_in:
@@ -90,35 +103,31 @@ def perform_2fa():
     It requests the 2FA app page after login to fetch the form or QR code page.
     """
     headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0",
-        "Accept": "text/html,application/xhtml+xml,application/json",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "pt-PT,pt;q=0.8,en;q=0.5,en-US;q=0.3",
-        "Referer": "https://github.com/sessions/two-factor/webauthn",
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://github.com/sessions/two-factor",
         "Origin": "https://github.com",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-        "Turbo-Visit": "true",
-        "X-React-App-Name": "rails"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "en-US,en;q=0.5",
     }
 
-    # Ensure req_session has been authenticated successfully before this call
-    print("Session cookies:", req_session.cookies.get_dict())
+    print(f"Headers Sent for 2FA: {headers}")
+    print(f"Session Cookies Before 2FA: {req_session.cookies.get_dict()}")
 
     response = req_session.get("https://github.com/sessions/two-factor/app", headers=headers)
-    save_cookies_to_file()
+    print(f"2FA Response Status Code: {response.status_code}")
+    print(f"2FA Response HTML: {response.text[:500]}")  # Print the first 500 characters for debugging
 
-    # Check if we got a proper HTML response or if it's a redirect or error page
-    if response.status_code != 200:
-        print("Error: Received status code", response.status_code)
-        return f"Error: {response.status_code}"
+    save_cookies_to_file()
 
     # Parse the response to update the authenticity_token if needed
     soup = BeautifulSoup(response.text, "html.parser")
     token_input = soup.find("input", {"name": "authenticity_token"})
     if token_input and token_input.has_attr("value"):
         flask_session["authenticity_token"] = token_input["value"]
+        print(f"Updated Authenticity Token: {flask_session['authenticity_token']}")
+    else:
+        print("Error: Could not find authenticity token in 2FA response.")
 
     return response.text
 
