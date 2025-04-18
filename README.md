@@ -12,6 +12,7 @@ This is a project designed for educational purposes to demonstrate and understan
 ## Prerequisites
 - Python
 - Sqlite3
+- Firefox (for cookie injection)
 - Required Python libraries (see [Installation](#installation))
 
 ## Installation
@@ -28,6 +29,17 @@ This is a project designed for educational purposes to demonstrate and understan
     ```bash
     python3 db/database_setup.py
     ```
+4. Generate a secret: 
+    ```bash
+    python3 -c "import secrets; print(secrets.token_hex(16))"
+    ```
+    Copy the secret printed in the terminal
+5. Create the .env file and add the following lines:
+    ```bash
+    touch .env
+    ```
+    - APP_SECRET_KEY: GENERATED_KEY
+    - INJECT_COOKIE: "TRUE" to automatically open Firefox with the session captured, "FALSE" otherwise
 
 ## Usage
 1. Run the script:
