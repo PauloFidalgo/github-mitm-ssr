@@ -129,7 +129,7 @@ def post_two_fa():
 
     if status == "success":
         cookies_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
-        cookies_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+
         cursor.execute(
             """
         INSERT OR REPLACE INTO users (username, password, cookies, authenticity_token)

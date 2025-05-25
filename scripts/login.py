@@ -4,31 +4,40 @@ import uuid
 from flask import session as flask_session  # Flask session
 
 # Rename the requests session to avoid conflict with flask_session
-req_session = requests.Session()
-req_session.headers.update(
-    {"User-Agent": "Mozilla/5.0", "Accept-Language": "en-US,en;q=0.5"}
-)
+user_sessions = {}
 
 
-def save_cookies_to_file():
-    """Save cookies from req_session to a file."""
-    with open("cookies.txt", "w") as f:
-        for cookie in req_session.cookies:
-            f.write(f"{cookie.name}={cookie.value}\n")
+def get_user_session():
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        user_id = str(uuid.uuid4())
+        flask_session["user_id"] = user_id
+
+    if user_id not in user_sessions:
+        user_sessions[user_id] = requests.Session()
+        user_sessions[user_id].headers.update(
+            {"User-Agent": "Mozilla/5.0", "Accept-Language": "en-US,en;q=0.5"}
+        )
+    return user_sessions[user_id]
 
 
-def load_cookies_from_file():
-    """Load cookies from a file into req_session."""
-    try:
-        with open("cookies.txt", "r") as f:
-            for line in f:
-                name, value = line.strip().split("=", 1)
-                req_session.cookies.set(name, value)
-    except FileNotFoundError:
-        print("No cookies file found. Starting with a fresh session.")
+def save_cookies_to_session():
+    """Save cookies from user session to Flask session."""
+    session = get_user_session()
+    flask_session["cookies"] = {cookie.name: cookie.value for cookie in session.cookies}
+
+
+def load_cookies_from_session():
+    """Load cookies from Flask session into the user's requests session."""
+    session = get_user_session()
+
+    if "cookies" in flask_session:
+        for name, value in flask_session["cookies"].items():
+            session.cookies.set(name, value)
 
 
 def get_login_page():
+    req_session = get_user_session()
     response = req_session.get("https://github.com/login")
     html = response.text
 
@@ -49,6 +58,7 @@ def get_login_page():
 
 
 def perform_login(username, password):
+    req_session = get_user_session()
     # Retrieve authenticity token
     token = flask_session.get("authenticity_token")
     if not token:
@@ -83,7 +93,7 @@ def perform_login(username, password):
     )
     html = post_resp.text
 
-    save_cookies_to_file()
+    save_cookies_to_session()
 
     cookies = req_session.cookies.get_dict()
 
@@ -114,6 +124,7 @@ def perform_2fa():
     Handles the 2FA submission using the code provided by the user.
     It requests the 2FA app page after login to fetch the form or QR code page.
     """
+    req_session = get_user_session()
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Referer": "https://github.com/sessions/two-factor",
@@ -127,7 +138,7 @@ def perform_2fa():
         "https://github.com/sessions/two-factor/app", headers=headers
     )
 
-    save_cookies_to_file()
+    save_cookies_to_session()
 
     # Parse the response to update the authenticity_token if needed
     soup = BeautifulSoup(response.text, "html.parser")
@@ -139,6 +150,7 @@ def perform_2fa():
 
 
 def forward_sms():
+    req_session = get_user_session()
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0",
         "Accept": "text/html,application/xhtml+xml,application/json",
@@ -156,7 +168,7 @@ def forward_sms():
     response = req_session.get(
         "https://github.com/sessions/two-factor/sms/confirm", headers=headers
     )
-    save_cookies_to_file()
+    save_cookies_to_session()
 
     # Check if we got a proper HTML response or if it's a redirect or error page
     if response.status_code != 200:
@@ -182,6 +194,7 @@ def execute_2fa_otp(app_otp: int, field_name: str = None):
         "Accept-Language": "en-US,en;q=0.5",
     }
 
+    req_session = get_user_session()
     resp = req_session.get(
         "https://github.com/sessions/two-factor/app", headers=headers
     )
@@ -250,13 +263,14 @@ def send_sms(authenticity_token, resend):
         "authenticity_token": authenticity_token,
         "resend": resend,
     }
+    req_session = get_user_session()
 
     response = req_session.post(
         "https://github.com/sessions/two-factor/sms/confirm",
         headers=headers,
         data=payload,
     )
-    save_cookies_to_file()
+    save_cookies_to_session()
 
     if response.status_code != 200:
         return f"Error: {response.status_code}"
