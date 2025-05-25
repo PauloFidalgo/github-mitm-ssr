@@ -44,9 +44,9 @@ This is a project designed for educational purposes to demonstrate and understan
 ## Usage
 1. Run the script:
     ```bash
-    gunicorn -w 4 -b <ip> app:app
+    python3 app.py
     ```
-2. Go to the Link in which the app started
+3. Go to the Link in which the app started
 
 ## Disclaimer
 This project is for educational purposes only. Unauthorized use of this tool is strictly prohibited and may violate local, state, or federal laws. Use responsibly.
